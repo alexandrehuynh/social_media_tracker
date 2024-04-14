@@ -23,6 +23,6 @@ names_in_following_not_in_followers = following_names - followers_names
 # Print out results
 print(f"Follower Count: {len(followers_names)}")
 print(f"Following Count: {len(following_names)}")
-print("Accounts Not Following Back:")
+print(f"Accounts Not Following Back: {len(names_in_following_not_in_followers)}")
 for name in sorted(names_in_following_not_in_followers):
     print(name)
