@@ -28,8 +28,8 @@ with open('reports/followers_1.json', 'r', encoding='utf-8') as file:
     followers_json = json.load(file)
 
 # Extract names
-past_followers_names = extract_names_from_html(followers_html)
-current_followers_names = extract_names_from_followers(followers_json)
+past_followers_names = extract_names_from_html(followers_html) # if html
+current_followers_names = extract_names_from_followers(followers_json) # if json
 
 # Find names in 'past follwers' not in 'followers'
 names_in_following_not_in_followers = past_followers_names - current_followers_names
