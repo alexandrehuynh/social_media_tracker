@@ -1,13 +1,23 @@
 import os
 import shutil
 import sys
-import argparse
 import subprocess
 import re
 from datetime import datetime
 
-# Define paths relative to the script's location (project root)
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+# --- Determine Project Root Correctly --- START
+# Check if running as a PyInstaller bundle
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running as executable: get the directory containing the executable
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+    print(f"Running as executable, PROJECT_ROOT set to: {PROJECT_ROOT}")
+else:
+    # Running as a normal script: get the directory containing the script
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+    print(f"Running as script, PROJECT_ROOT set to: {PROJECT_ROOT}")
+# --- Determine Project Root Correctly --- END
+
+# Define paths relative to the determined project root
 REPORTS_DIR = os.path.join(PROJECT_ROOT, 'reports')
 OLD_FOLLOWERS_PATH = os.path.join(REPORTS_DIR, 'old_followers.json')
 CURRENT_FOLLOWERS_1_PATH = os.path.join(REPORTS_DIR, 'followers_1.json')
@@ -22,6 +32,11 @@ def find_latest_dated_folder(reports_path):
     latest_folder_path = None
 
     try:
+        # Check if reports_path exists before listing directory
+        if not os.path.isdir(reports_path):
+             print(f"Error: Reports directory not found at {reports_path}")
+             sys.exit(1)
+
         for item in os.listdir(reports_path):
             item_path = os.path.join(reports_path, item)
             if os.path.isdir(item_path) and date_pattern.match(item):
@@ -33,8 +48,8 @@ def find_latest_dated_folder(reports_path):
                 except ValueError:
                     # Ignore items that match pattern but aren't valid dates
                     continue
-    except FileNotFoundError:
-        print(f"Error: Reports directory not found at {reports_path}")
+    except Exception as e: # Catch other potential OS errors
+        print(f"Error accessing reports directory {reports_path}: {e}")
         sys.exit(1)
 
     if latest_folder_path:
@@ -50,17 +65,49 @@ def run_script(script_path):
         print(f"Error: Analysis script not found: {script_path}")
         return
 
+    # Determine the Python executable to use
+    # If running bundled, sys.executable is the app itself. We need python.
+    # If not bundled, sys.executable is the python interpreter.
+    python_executable = sys.executable
+    # A simple heuristic: if running bundled, try to find 'python' or 'python3'
+    # This is NOT foolproof, assumes python is in PATH relative to executable dir
+    # or globally. A more robust solution might involve bundling python itself
+    # or requiring it to be installed separately and in PATH.
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # Try common names, preferring python3 if available
+        found_python = False
+        for name in ['python3', 'python']:
+            try:
+                # Check if the command exists and is executable
+                test_cmd = [name, '--version']
+                subprocess.run(test_cmd, check=True, capture_output=True, cwd=PROJECT_ROOT)
+                python_executable = name
+                print(f"Using '{python_executable}' to run analysis scripts.")
+                found_python = True
+                break
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                continue
+        if not found_python:
+            print(f"Warning: Could not automatically find python/python3 executable.")
+            print(f"         Analysis scripts ({os.path.basename(JSON_TRACKER_SCRIPT)}, {os.path.basename(JSON_HTTP_COMPARE_SCRIPT)}) might fail to run.")
+            print(f"         Attempting to use sys.executable ({sys.executable}), which might be incorrect.")
+            # Fallback to sys.executable, might be the bundled app itself
+            # This will likely fail for the subprocess call below
+            python_executable = sys.executable
+
     try:
         print(f"Running script: {os.path.basename(script_path)}...")
-        result = subprocess.run([sys.executable, script_path], check=True, capture_output=True, text=True)
+        # Use the determined python executable
+        result = subprocess.run([python_executable, script_path], check=True, capture_output=True, text=True, cwd=PROJECT_ROOT)
         print(f"Output from {os.path.basename(script_path)}:")
         print(result.stdout)
         if result.stderr:
             print(f"Errors from {os.path.basename(script_path)}:")
             print(result.stderr)
         print(f"Finished running {os.path.basename(script_path)}.")
-    except FileNotFoundError:
-        print(f"Error: Python interpreter not found at {sys.executable}")
+    except FileNotFoundError as e:
+        print(f"Error: Interpreter '{python_executable}' or script '{script_path}' not found.")
+        print(e)
     except subprocess.CalledProcessError as e:
         print(f"Error running script {os.path.basename(script_path)}:")
         print(e.stdout)
